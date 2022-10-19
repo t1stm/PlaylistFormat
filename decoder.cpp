@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <vector>
 
 struct Info {
   uint8_t *name;
@@ -21,7 +22,7 @@ struct Entry
 };
 
 uint8_t* readShortString(uint8_t *data, uint8_t length) {
-  uint8_t *text = (uint8_t *) malloc(256);
+  uint8_t *text = (uint8_t *) calloc(256, 1);
   uint8_t *pointer = text;
   for (uint8_t i = 0; i < length; i++)
   {
@@ -32,7 +33,7 @@ uint8_t* readShortString(uint8_t *data, uint8_t length) {
 }
 
 uint8_t* readString(uint8_t **data, uint16_t length) {
-  uint8_t *text = (uint8_t *) malloc(length);
+  uint8_t *text = (uint8_t *) calloc(length, 1);
   uint8_t *pointer = text;
   for (uint8_t i = 0; i < length; i++)
   {
@@ -40,6 +41,7 @@ uint8_t* readString(uint8_t **data, uint16_t length) {
     text[i] = copy;
     *data += 1;
   };
+  text[length] = 0;
   return pointer;
 }
 
@@ -97,7 +99,7 @@ bool isPlayHeader(uint8_t **data) {
 void copyShortString(uint8_t **data, uint8_t **dest) {
   uint8_t length = readByte(data);
   uint8_t *str = readShortString(*data, length);
-  uint8_t *ret = (uint8_t *) malloc(256);
+  uint8_t *ret = (uint8_t *) calloc(256,1);
   for (size_t i = 0; i < length; i++)
   {
     ret[i] = str[i];
@@ -129,8 +131,8 @@ struct Info getInfo(uint8_t **data) {
     *data += sizeof(uint32_t);
   }
   else {
-    uint16_t shorT = **((uint16_t **) data);
-    info.count = shorT; // Боли ме сърцето.
+    uint16_t shortInt = **((uint16_t **) data);
+    info.count = shortInt; // Боли ме сърцето.
     *data += sizeof(uint16_t);
   }
 
@@ -139,35 +141,29 @@ struct Info getInfo(uint8_t **data) {
   return info;
 }
 
-uint32_t getEntries(uint8_t **data, uint8_t *start, uint32_t length, struct Entry **entries) {
+uint32_t getEntries(uint8_t **data, uint8_t *start, uint32_t length, std::vector<Entry> *entries) {
   uint32_t pos = 0;
   uint32_t count = 2;
   while (*data - start < length)
   {
-    if (pos + 1 >= count) {
-      uint32_t ncount = count * 2;
-      struct Entry *p = *entries;
-      *entries = (struct Entry *) malloc(ncount * sizeof(struct Entry));
-      memcpy(p, *entries, count * sizeof(struct Entry));
-      count = ncount;
-      free(p);
-    }
-
     uint16_t len = **((uint16_t **) data);
     *data += sizeof(uint16_t);
 
-    (*entries)[pos].type = readByte(data);
-    (*entries)[pos].data = readString(data, len);
-    (*entries)[pos].length = len;
-    pos += 1;
+    struct Entry *entry = (struct Entry *) calloc(1, sizeof(struct Entry));
+
+    (*entry).type = readByte(data);
+    (*entry).data = readString(data, len);
+    (*entry).length = len;
+
+    (*entries).push_back(*entry);
   }
   return pos;
 }
 
-uint32_t* decode(uint8_t *buf, uint32_t length, struct Info **information, struct Entry **items) {
+void decode(uint8_t *buf, uint32_t length, struct Info **information, std::vector<struct Entry> *entryPointer) {
   uint8_t *startingPosition = buf;
   uint32_t *entryLength = (uint32_t *) malloc(sizeof(uint32_t));
-  if (!checkStartingHeader(buf)) return entryLength;
+  if (!checkStartingHeader(buf)) return;
   uint8_t **bufPoint = &buf;
   *bufPoint += 8;
   struct Info *info = (struct Info *) malloc(sizeof(struct Info));
@@ -175,23 +171,20 @@ uint32_t* decode(uint8_t *buf, uint32_t length, struct Info **information, struc
   if (isInfoHeader(bufPoint)) {
     *info = getInfo(bufPoint);
   }
-  struct Entry *entries = (struct Entry *) malloc(sizeof(struct Entry));
-  struct Entry **entryPointer = &entries;
+  
   if (isPlayHeader(bufPoint)) {
     *entryLength = getEntries(bufPoint, startingPosition, length, entryPointer);
   }
-  **items = *entries;
   *information = info;
-  return entryLength;
 }
 
 int main() {
   uint64_t length;
   uint8_t *buffer;
-  struct Entry en = {0,0,0};
+  std::vector<struct Entry> entries;
+  std::vector<struct Entry> *entryPointer = &entries;
   struct Info in = {0,0,0,0,0,0};
 
-  struct Entry *items = &en;
   struct Info *info = &in;
   FILE *fp = fopen("./e30e0c85-e8c2-4d7c-848c-55ef32cca153.play", "rb");
   if (!fp) exit(1);
@@ -206,13 +199,13 @@ int main() {
     fputs("Copying file failed.\n", stderr);
     exit(1);
   }
-  uint32_t decodedLength = *decode(buffer, length, &info, &items);
+  decode(buffer, length, &info, &entries);
 
-  for (uint32_t i = 0; i < decodedLength; i++)
+  printf("Info: '%s' '%s' '%s'\n", (*info).name, (*info).maker, (*info).description);
+
+  for (uint32_t i = 0; i < entries.size(); i++)
   {
-    struct Entry item = *items;
-    printf("[%u] - (%u) \n", i, item.type);
-    items += 1;
+    printf("[%u] - (%u): %s\n", i, entries[i].type, entries[i].data);
   }
 
   fclose(fp);
