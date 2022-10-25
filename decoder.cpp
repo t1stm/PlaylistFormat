@@ -201,7 +201,7 @@ int main() {
   }
   decode(buffer, length, &info, &entries);
 
-  printf("Info: '%s' '%s' '%s'\n", (*info).name, (*info).maker, (*info).description);
+  printf("Info: '%s' '%s' '%s'\n", info->name, info->maker, info->description);
 
   for (uint32_t i = 0; i < entries.size(); i++)
   {
